@@ -4,7 +4,7 @@ import random
 import time
 import gym
 import numpy as np
-import lbforaging.foraging
+import lbforaging.foraging as foraging
 
 
 logger = logging.getLogger(__name__)
@@ -32,11 +32,11 @@ def _game_loop(env, render):
             time.sleep(0.5)
 
         done = np.all(ndone)
-    print(env.players[0].score, env.players[1].score)
+    print(*map(lambda x: x.score, env.players))
 
 
 def main(game_count=1, render=False):
-    env = gym.make("Foraging-8x8-2p-2f-v1")
+    env = gym.make("Foraging-5x5-4p-3f-share-v2")
     obs = env.reset()
 
     for episode in range(game_count):

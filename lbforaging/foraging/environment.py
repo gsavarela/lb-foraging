@@ -75,6 +75,7 @@ class ForagingEnv(Env):
         max_episode_steps,
         force_coop,
         normalize_reward=True,
+        share_reward=True
     ):
         self.logger = logging.getLogger(__name__)
         self.seed()
@@ -97,6 +98,7 @@ class ForagingEnv(Env):
         self._max_episode_steps = max_episode_steps
 
         self._normalize_reward = normalize_reward
+        self._share_reward = share_reward
 
         self.viewer = None
 
@@ -480,6 +482,12 @@ class ForagingEnv(Env):
                     a.reward = a.reward / float(
                         adj_player_level * self._food_spawned
                     )  # normalize reward
+            
+            # if the rewards are shared than we split the rewards among every player 
+            if self._share_reward:
+                total = sum(map(lambda x: x.reward, adj_players))
+                for p in self.players:
+                    p.reward = total / len(self.players)
             # and the food is removed
             self.field[frow, fcol] = 0
 
@@ -509,3 +517,4 @@ class ForagingEnv(Env):
     def close(self):
         if self.viewer:
             self.viewer.close()
+
