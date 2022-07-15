@@ -21,10 +21,8 @@ def _game_loop(env, render):
         time.sleep(0.5)
 
     while not done:
+        actions  = env.action_space.sample()
 
-        actions = []
-        for i, player in enumerate(env.players):
-            actions.append(env.action_space.sample())
         nobs, nreward, ndone, _ = env.step(actions)
         if sum(nreward) > 0:
             print(nreward)
@@ -34,11 +32,11 @@ def _game_loop(env, render):
             time.sleep(0.5)
 
         done = np.all(ndone)
-    # print(env.players[0].score, env.players[1].score)
+    print(env.players[0].score, env.players[1].score)
 
 
 def main(game_count=1, render=False):
-    env = gym.make("Foraging-8x8-2p-v0")
+    env = gym.make("Foraging-8x8-2p-2f-v1")
     obs = env.reset()
 
     for episode in range(game_count):
@@ -48,7 +46,7 @@ def main(game_count=1, render=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Play the level foraging game.")
 
-    parser.add_argument("--render", action="store_true")
+    parser.add_argument("--render", action="store_true", default=True)
     parser.add_argument(
         "--times", type=int, default=1, help="How many times to run the game"
     )
