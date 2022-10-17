@@ -2,6 +2,7 @@ import logging
 from collections import namedtuple, defaultdict
 from enum import Enum
 from itertools import product
+from functools import partial
 from gym import Env
 import gym
 from gym.utils import seeding
@@ -347,30 +348,36 @@ class ForagingEnv(Env):
         def make_obs_array(observation):
             obs = np.zeros(self.observation_space[0].shape, dtype=np.float32)
             # obs[: observation.field.size] = observation.field.flatten()
-            # self player is always first
             seen_players = [p for p in observation.players if p.is_self] + [
                 p for p in observation.players if not p.is_self
             ]
 
-            for i in range(self.max_food):
-                obs[3 * i] = -1
-                obs[3 * i + 1] = -1
-                obs[3 * i + 2] = 0
+            # Change representation from relative to absolute.
+            seen_foods = [*zip(*np.nonzero(observation.field))]
+            for i, (y, x) in enumerate(zip(*np.nonzero(self.field))):
+                if (y, x) in seen_foods:
+                    obs[3 * i] = y
+                    obs[3 * i + 1] = x
+                    obs[3 * i + 2] = observation.field[y, x]
+                else:
+                    obs[3 * i] = -1
+                    obs[3 * i + 1] = -1
+                    obs[3 * i + 2] = 0
 
-            for i, (y, x) in enumerate(zip(*np.nonzero(observation.field))):
-                obs[3 * i] = y
-                obs[3 * i + 1] = x
-                obs[3 * i + 2] = observation.field[y, x]
+            def g(x): return getattr(x, 'position')
+            seen_players_positions = map(g, seen_players)
 
-            for i in range(len(self.players)):
-                obs[self.max_food * 3 + 3 * i] = -1
-                obs[self.max_food * 3 + 3 * i + 1] = -1
-                obs[self.max_food * 3 + 3 * i + 2] = 0
+            for i, p in enumerate(self.players):
 
-            for i, p in enumerate(seen_players):
-                obs[self.max_food * 3 + 3 * i] = p.position[0]
-                obs[self.max_food * 3 + 3 * i + 1] = p.position[1]
-                obs[self.max_food * 3 + 3 * i + 2] = p.level
+                if p.position in seen_players_positions:
+                    obs[self.max_food * 3 + 3 * i] = p.position[0]
+                    obs[self.max_food * 3 + 3 * i + 1] = p.position[1]
+                    obs[self.max_food * 3 + 3 * i + 2] = p.level
+                else:
+                    obs[self.max_food * 3 + 3 * i] = -1
+                    obs[self.max_food * 3 + 3 * i + 1] = -1
+                    obs[self.max_food * 3 + 3 * i + 2] = 0
+                
 
             return obs
 
