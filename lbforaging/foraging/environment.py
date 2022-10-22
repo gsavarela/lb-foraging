@@ -2,6 +2,7 @@ import logging
 from collections import namedtuple, defaultdict
 from enum import Enum
 from itertools import product
+from functools import partial
 from gym import Env
 import gym
 from gym.utils import seeding
@@ -171,11 +172,11 @@ class ForagingEnv(Env):
 
     def neighborhood(self, row, col, distance=1, ignore_diag=False):
         if not ignore_diag:
-            return self.field[
-                max(row - distance, 0) : min(row + distance + 1, self.rows),
-                max(col - distance, 0) : min(col + distance + 1, self.cols),
-            ]
-
+            i = slice(max(row - distance, 0), min(row + distance + 1, self.rows))
+            j = slice(max(col - distance, 0), min(col + distance + 1, self.cols))
+            view = np.zeros_like(self.field)
+            view[i, j] = self.field[i, j]
+            return view
         return (
             self.field[
                 max(row - distance, 0) : min(row + distance + 1, self.rows), col
@@ -298,11 +299,6 @@ class ForagingEnv(Env):
         self.logger.error("Undefined action {} from {}".format(action, player.name))
         raise ValueError("Undefined action")
 
-    def _transform_to_neighborhood(self, center, sight, position):
-        return (
-            position[0] - center[0] + min(sight, center[0]),
-            position[1] - center[1] + min(sight, center[1]),
-        )
 
     def get_valid_actions(self) -> list:
         return list(product(*[self._valid_actions[player] for player in self.players]))
@@ -312,30 +308,17 @@ class ForagingEnv(Env):
             actions=self._valid_actions[player],
             players=[
                 self.PlayerObservation(
-                    position=self._transform_to_neighborhood(
-                        player.position, self.sight, a.position
-                    ),
+                    position=a.position,
                     level=a.level,
                     is_self=a == player,
                     history=a.history,
                     reward=a.reward if a == player else None,
                 )
                 for a in self.players
-                if (
-                    min(
-                        self._transform_to_neighborhood(
-                            player.position, self.sight, a.position
-                        )
-                    )
-                    >= 0
-                )
-                and max(
-                    self._transform_to_neighborhood(
-                        player.position, self.sight, a.position
-                    )
-                )
-                <= 2 * self.sight
-            ],
+                if max(
+                    abs(np.array(a.position) - np.array(player.position))
+                ) <= self.sight
+            ],      # add all players within a range.
             # todo also check max?
             field=np.copy(self.neighborhood(*player.position, self.sight)),
             game_over=self.game_over,
@@ -347,30 +330,35 @@ class ForagingEnv(Env):
         def make_obs_array(observation):
             obs = np.zeros(self.observation_space[0].shape, dtype=np.float32)
             # obs[: observation.field.size] = observation.field.flatten()
-            # self player is always first
             seen_players = [p for p in observation.players if p.is_self] + [
                 p for p in observation.players if not p.is_self
             ]
+            # Change representation from relative to absolute.
+            seen_foods = [*zip(*np.nonzero(observation.field))]
+            for i, (y, x) in enumerate(self.foods):
+                if (y, x) in seen_foods:
+                    obs[3 * i] = y
+                    obs[3 * i + 1] = x
+                    obs[3 * i + 2] = observation.field[y, x]
+                    
+                else:
+                    obs[3 * i] = -1
+                    obs[3 * i + 1] = -1
+                    obs[3 * i + 2] = 0
 
-            for i in range(self.max_food):
-                obs[3 * i] = -1
-                obs[3 * i + 1] = -1
-                obs[3 * i + 2] = 0
+            def g(x): return getattr(x, 'position')
+            seen_players_positions = [*map(g, seen_players)]
 
-            for i, (y, x) in enumerate(zip(*np.nonzero(observation.field))):
-                obs[3 * i] = y
-                obs[3 * i + 1] = x
-                obs[3 * i + 2] = observation.field[y, x]
+            for i, p in enumerate(self.players):
 
-            for i in range(len(self.players)):
-                obs[self.max_food * 3 + 3 * i] = -1
-                obs[self.max_food * 3 + 3 * i + 1] = -1
-                obs[self.max_food * 3 + 3 * i + 2] = 0
-
-            for i, p in enumerate(seen_players):
-                obs[self.max_food * 3 + 3 * i] = p.position[0]
-                obs[self.max_food * 3 + 3 * i + 1] = p.position[1]
-                obs[self.max_food * 3 + 3 * i + 2] = p.level
+                if p.position in seen_players_positions:
+                    obs[self.max_food * 3 + 3 * i] = p.position[0]
+                    obs[self.max_food * 3 + 3 * i + 1] = p.position[1]
+                    obs[self.max_food * 3 + 3 * i + 2] = p.level
+                else:
+                    obs[self.max_food * 3 + 3 * i] = -1
+                    obs[self.max_food * 3 + 3 * i + 1] = -1
+                    obs[self.max_food * 3 + 3 * i + 2] = 0
 
             return obs
 
@@ -398,6 +386,7 @@ class ForagingEnv(Env):
         self.current_step = 0
         self._game_over = False
         self._gen_valid_moves()
+        self.foods = [*zip(*np.nonzero(self.field))]
 
         observations = [self._make_obs(player) for player in self.players]
         nobs, nreward, ndone, ninfo = self._make_gym_obs(observations)
