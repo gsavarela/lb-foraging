@@ -343,6 +343,29 @@ class ForagingEnv(Env):
             current_step=self.current_step,
         )
 
+    def _seen(self):
+        """Generates a list of lists w/ indices of the seen players"""
+        ret = []
+        for player in self.players:
+            ret.append([
+                j for j, a in enumerate(self.players)
+                if (
+                    min(
+                        self._transform_to_neighborhood(
+                            player.position, self.sight, a.position
+                        )
+                    )
+                    >= 0
+                )
+                and max(
+                    self._transform_to_neighborhood(
+                        player.position, self.sight, a.position
+                    )
+                )
+                <= 2 * self.sight
+            ])
+        return ret
+        
     def _make_gym_obs(self, observations):
         def make_obs_array(observation):
             obs = np.zeros(self.observation_space[0].shape, dtype=np.float32)
@@ -383,8 +406,13 @@ class ForagingEnv(Env):
         nreward = [get_player_reward(obs) for obs in observations]
         ndone = [obs.game_over for obs in observations]
         # ninfo = [{'observation': obs} for obs in observations]
-        ninfo = {}
+        # TODO: Why seen is not simmetric
+        edges = sorted({(i, j) for i, edge_list in enumerate(self._seen()) for j in edge_list})
+        data = np.zeros((len(self.players), len(self.players)), dtype=int)
+        for u, v in filter(lambda xy: xy[0] != xy[1], edges):
+            data[u, v] = 1
 
+        ninfo = {'A_adj': data}
         return nobs, nreward, ndone, ninfo
 
     def reset(self):
